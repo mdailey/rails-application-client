@@ -1,8 +1,36 @@
-# Rails::Application::Client
+# RailsApplicationClient
 
-Welcome to your new gem! In this directory, you'll find the files you need to be able to package up your Ruby library into a gem. Put your Ruby code in the file `lib/rails/application/client`. To experiment with that code, run `bin/console` for an interactive prompt.
+Edge computation architectures typically comprise a set
+of compute resources that are integrated with or physically
+proximate with sensors and actuators and a cloud-based
+application that centrally collects events and provides
+dashboard functionality to users.
 
-TODO: Delete this and the text above, and describe your gem
+When the central Web application / dashboard application is
+a Rails application, we end up with a recurring problem, the
+answer to these questions:
+ 
+  - How to configure a server to accept incoming event streams
+    from multiple computational clients?
+  - How to secure the privacy, integrity, and authenticity of the
+    communication between the server and each client?
+
+This problem is already addressed in the SSL/TLS protocols.
+We configure the Web application as a Web service endpoint
+and protect the communication with SSL/TLS and mutual authentication
+with X.509 certificates. The server acts as a central certificate
+authority that issues certificates for each client. To add a new
+client, the administrator provides some information about the new
+client, downloads the new client's SSL private key and client
+certificate, and installs the key/certificate files on the client.
+Thereafter, the client software uses the the key and certificate to
+establish a secure authenticated connection with the server and
+upload its event stream.
+
+This gem provides scaffolding to manage edge computing clients of a
+Rails application. It provides ActiveRecord models for the server
+configuration (CA key and certificate) and clients (description,
+key, and certificate), as well as appropriate controllers and views.
 
 ## Installation
 

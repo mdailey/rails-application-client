@@ -1,6 +1,5 @@
-# frozen_string_literal: true
 
-require "rails/application/client/version"
+require "version"
 
 module RailsApplicationClient
   def self.greet(name)
