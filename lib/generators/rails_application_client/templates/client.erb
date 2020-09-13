@@ -1,0 +1,44 @@
+require 'openssl'
+
+class Client < ActiveRecord::Base
+  validates_presence_of :name
+  validates_uniqueness_of :name
+  before_update :set_ssl_cert
+
+  has_many :client_users, dependent: :destroy
+  has_many :users, through: :client_users
+
+  def set_ssl_pk
+    self.ssl_pk = OpenSSL::PKey::RSA.new(2048)
+    self.set_ssl_cert
+  end
+
+  def ssl_pk
+    cur_pk = super
+    if cur_pk.nil?
+      set_ssl_pk
+      save
+      cur_pk = super
+    end
+    cur_pk
+  end
+
+  def set_ssl_cert
+    self.ssl_cert = AppConfig.instance.client_cert(self)
+  end
+
+  def ssl_cert
+    cur_cert = super
+    if cur_cert.nil?
+      set_ssl_cert
+      save
+      cur_cert = super
+    end
+    cur_cert
+  end
+
+  def key_pair
+    ssl_pk + ssl_cert + AppConfig.instance.ssl_cert + AppConfig.instance.ca_cert
+  end
+
+end

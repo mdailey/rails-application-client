@@ -1,0 +1,107 @@
+class ClientsController < ApplicationController
+
+  before_action :authorize, except: :client_status
+  before_action :set_client, only: [:show, :edit, :update, :destroy, :key_pair]
+  before_action :set_clients, only: [:client_status, :index]
+
+  respond_to :html, :pem
+
+  def client_status
+    @diff_hours = @configuration.max_client_down_time
+    @latest_created_at = {}
+    @diff_created_at = {}
+    @diff_event_timestamp = {}
+    @client_statuses = {}
+
+    @clients.each do |c|
+      latest = Event.select('created_at', 'event_timestamp')
+                   .where(status: Event.statuses[:new_status], client_id: c.id).last
+
+      if latest.nil?
+        @latest_created_at[c.id] = "-"
+        @diff_created_at[c.id] = "-"
+        @diff_event_timestamp[c.id] = "-"
+        @client_statuses[c.id] = "-"
+      else
+        @latest_created_at[c.id] = latest.created_at.strftime('%d/%m/%y %H:%M:%S')
+        @diff_created_at[c.id] = ((Time.now - latest.created_at.to_time) / 3600).round(2)
+        @diff_event_timestamp[c.id] = ((Time.now - latest.event_timestamp.to_time) / 3600).round(2)
+
+        if @diff_created_at[c.id] > @diff_hours
+          @client_statuses[c.id] = "<span style='color:red;'>DOWN</span>".html_safe
+        else
+          @client_statuses[c.id] = "<span style='color:green;'>UP</span>".html_safe
+        end
+      end
+    end
+  end
+
+  def index
+  end
+
+  def key_pair
+    respond_to do |format|
+      format.pem { send_data @client.key_pair, type: "cert/pem" }
+    end
+  end
+
+  def new
+    @client = Client.new
+  end
+
+  def edit
+  end
+
+  def create
+    @client = Client.new(client_params)
+
+    respond_to do |format|
+      if @client.save
+        format.html { redirect_to clients_path, notice: t(:client_successfully_created) }
+        format.json { render :show, status: :created, location: @client }
+      else
+        format.html { render :new }
+        format.json { render json: @client.errors, status: :unprocessable_entity }
+      end
+    end
+  end
+
+  def update
+    respond_to do |format|
+      if @client.update(client_params)
+        format.html { redirect_to clients_path, notice: t(:client_successfully_updated) }
+        format.json { render :show, status: :ok, location: @client }
+      else
+        format.html { render :edit }
+        format.json { render json: @client.errors, status: :unprocessable_entity }
+      end
+    end
+  end
+
+  def destroy
+    @client.destroy
+    respond_to do |format|
+      format.html { redirect_to clients_url, notice: t(:client_successfully_destroyed) }
+      format.json { head :no_content }
+    end
+  end
+
+  private
+
+  def set_client
+    @client = Client.find(params[:id])
+  end
+
+  def set_clients
+    if current_user.is_admin?
+      @clients = Client.all
+    else
+      @clients = Client.where(id: current_user.client_ids)
+    end
+  end
+
+  def client_params
+    params.require(:client).permit(:name, :description)
+  end
+
+end

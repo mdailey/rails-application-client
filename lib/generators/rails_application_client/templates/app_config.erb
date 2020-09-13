@@ -1,0 +1,115 @@
+require 'openssl'
+
+class AppConfig < ActiveRecord::Base
+  acts_as_singleton
+
+  def set_ssl_pk
+    self.ssl_pk = OpenSSL::PKey::RSA.new(2048)
+    self.set_ssl_cert
+    save
+  end
+
+  def ssl_pk
+    cur_pk = super
+    if cur_pk.nil?
+      set_ssl_pk
+      save
+      cur_pk = super
+    end
+    cur_pk
+  end
+
+  def set_ca_pk
+    self.ca_pk = OpenSSL::PKey::RSA.new(2048)
+    self.set_ca_cert
+    save
+  end
+
+  def ca_pk
+    cur_pk = super
+    if cur_pk.nil?
+      set_ca_pk
+      save
+      cur_pk = super
+    end
+    cur_pk
+  end
+
+  def set_ca_cert
+    key = OpenSSL::PKey::RSA.new ca_pk
+    cert = OpenSSL::X509::Certificate.new
+    ca_cn = "<%= @app_name %> CA"
+    # Give CA a unique name if this is a test environment
+    ca_cn += " test " + Time.now.to_s if Rails.env == "test"
+    ca_name = OpenSSL::X509::Name.parse "CN=#{ca_cn}"
+    cert.serial = 0
+    cert.version = 2
+    cert.not_before = Time.now
+    cert.not_after = Time.now + 100.years
+    cert.public_key = key.public_key
+    cert.subject = ca_name
+    cert.issuer = ca_name
+    extension_factory = OpenSSL::X509::ExtensionFactory.new #, nil, cert
+    extension_factory.subject_certificate = cert
+    extension_factory.issuer_certificate = cert
+    cert.add_extension extension_factory.create_extension('basicConstraints', 'CA:TRUE', true)
+    cert.add_extension extension_factory.create_extension('subjectKeyIdentifier', 'hash')
+    cert.add_extension extension_factory.create_extension('keyUsage', 'cRLSign,keyCertSign', true)
+    cert.sign key, OpenSSL::Digest::SHA1.new
+    self.ca_cert = cert
+    save
+    self.set_ssl_cert
+    save
+    Client.all.each { |client| client.set_ssl_cert ; client.save }
+  end
+
+  def ca_cert
+    cur_cert = super
+    if cur_cert.nil?
+      set_ca_cert
+      save
+      cur_cert = super
+    end
+    cur_cert
+  end
+
+  def get_ssl_cert(ca_key, ssl_key, name)
+    cert = OpenSSL::X509::Certificate.new
+    cert.serial = 1
+    cert.version = 2
+    cert.not_before = Time.now
+    cert.not_after = Time.now + 100.years
+    cert.subject = OpenSSL::X509::Name.parse "O=<%= @app_name %>/CN=#{name}"
+    cert.issuer = OpenSSL::X509::Certificate.new(ca_cert).subject
+    cert.public_key = ssl_key.public_key
+    extension_factory = OpenSSL::X509::ExtensionFactory.new nil, cert
+    cert.add_extension extension_factory.create_extension('basicConstraints', 'CA:FALSE', true)
+    cert.add_extension extension_factory.create_extension('keyUsage', 'keyEncipherment,dataEncipherment,digitalSignature')
+    cert.add_extension extension_factory.create_extension('subjectKeyIdentifier', 'hash')
+    cert.sign ca_key, OpenSSL::Digest::SHA1.new
+    cert
+  end
+
+  def set_ssl_cert
+    ca_key = OpenSSL::PKey::RSA.new ca_pk
+    ssl_key = OpenSSL::PKey::RSA.new ssl_pk
+    self.ssl_cert = get_ssl_cert(ca_key, ssl_key, "<%= @hostname %>")
+  end
+
+  def ssl_cert
+    cur_cert = super
+    if cur_cert.nil?
+      set_ssl_cert
+      save
+      cur_cert = super
+    end
+    cur_cert
+  end
+
+  def client_cert(client)
+    ca_key = OpenSSL::PKey::RSA.new ca_pk
+    ssl_key = OpenSSL::PKey::RSA.new client.ssl_pk
+    get_ssl_cert(ca_key, ssl_key,client.camera_location.name+client.violation_type_group.name)
+  end
+
+end
